@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PeerFile Share - Client-Side File Sharing</title>
+    <title>P2P File Share - Direct File Sharing</title>
     <style>
         * {
             box-sizing: border-box;
@@ -121,40 +121,40 @@
             box-shadow: 0 6px 12px rgba(52, 152, 219, 0.4);
         }
         
-        .share-section {
+        .connection-status {
             background: white;
             border-radius: 10px;
-            padding: 25px;
+            padding: 15px;
             margin-bottom: 30px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-        }
-        
-        .share-url {
             display: flex;
-            margin-top: 15px;
+            align-items: center;
+            justify-content: space-between;
         }
         
-        .share-url input {
-            flex: 1;
-            padding: 12px 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px 0 0 5px;
-            font-size: 16px;
+        .status-indicator {
+            display: flex;
+            align-items: center;
         }
         
-        .copy-btn {
-            background: linear-gradient(to right, #2ecc71, #27ae60);
-            color: white;
-            border: none;
-            border-radius: 0 5px 5px 0;
-            padding: 0 20px;
-            cursor: pointer;
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-connected {
+            background-color: #2ecc71;
+        }
+        
+        .status-disconnected {
+            background-color: #e74c3c;
+        }
+        
+        .peer-id {
             font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .copy-btn:hover {
-            background: linear-gradient(to right, #27ae60, #219653);
+            color: #3498db;
         }
         
         .files-section h2 {
@@ -216,9 +216,19 @@
             word-break: break-word;
         }
         
-        .file-size {
+        .file-meta {
+            display: flex;
+            align-items: center;
             color: #7f8c8d;
             font-size: 14px;
+        }
+        
+        .file-size {
+            margin-right: 15px;
+        }
+        
+        .file-owner {
+            font-style: italic;
         }
         
         .file-actions {
@@ -335,6 +345,10 @@
             opacity: 1;
         }
         
+        .notification.error {
+            background: #e74c3c;
+        }
+        
         @media (max-width: 768px) {
             .file-item {
                 flex-direction: column;
@@ -346,20 +360,6 @@
                 width: 100%;
                 justify-content: flex-end;
             }
-            
-            .share-url {
-                flex-direction: column;
-            }
-            
-            .share-url input {
-                border-radius: 5px;
-                margin-bottom: 10px;
-            }
-            
-            .copy-btn {
-                border-radius: 5px;
-                padding: 12px;
-            }
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -367,17 +367,17 @@
 <body>
     <div class="container">
         <header>
-            <h1><i class="fas fa-share-alt"></i> PeerFile Share</h1>
-            <p class="description">Share files directly from your browser - no server required!</p>
+            <h1><i class="fas fa-share-alt"></i> P2P File Share</h1>
+            <p class="description">Upload and share files directly with others on this site - no links needed!</p>
         </header>
         
         <div class="instructions">
             <h3><i class="fas fa-info-circle"></i> How It Works</h3>
             <ol>
                 <li>Upload a file using the button below or by dragging and dropping</li>
-                <li>Copy the sharing URL and send it to someone</li>
-                <li>The recipient can view images/videos in the browser or download any file type</li>
-                <li>All file processing happens locally in the browser - your files never leave your computer</li>
+                <li>Your file will be visible to everyone currently on this website</li>
+                <li>Others can view images/videos directly in the browser or download any file type</li>
+                <li>Files are transferred directly between users (peer-to-peer) without server storage</li>
             </ol>
         </div>
         
@@ -391,21 +391,22 @@
             </div>
         </section>
         
-        <section class="share-section">
-            <h2><i class="fas fa-link"></i> Share File</h2>
-            <p>Share this URL with others to let them access your file:</p>
-            <div class="share-url">
-                <input type="text" id="shareUrl" readonly placeholder="Upload a file to generate share URL">
-                <button class="copy-btn" id="copyBtn"><i class="fas fa-copy"></i> Copy</button>
+        <div class="connection-status">
+            <div class="status-indicator">
+                <div class="status-dot status-disconnected" id="statusDot"></div>
+                <span id="statusText">Connecting to peers...</span>
             </div>
-        </section>
+            <div>
+                Your ID: <span class="peer-id" id="peerId">Generating...</span>
+            </div>
+        </div>
         
         <section class="files-section">
-            <h2><i class="fas fa-files"></i> Your File</h2>
+            <h2><i class="fas fa-files"></i> Available Files</h2>
             <div class="file-list" id="fileList">
                 <div class="empty-state" id="emptyState">
                     <i class="fas fa-file-upload"></i>
-                    <p>No files uploaded yet</p>
+                    <p>No files available yet</p>
                 </div>
             </div>
         </section>
@@ -418,31 +419,255 @@
         </div>
     </div>
     
-    <div class="notification" id="notification">URL copied to clipboard!</div>
+    <div class="notification" id="notification">File uploaded successfully!</div>
 
     <script>
         document.addEventListener('DOMContentLoaded', initApp);
         
-        function initApp() {
-            // Check if there's a file in the URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const fileData = urlParams.get('file');
-            
-            if (fileData) {
-                // We're viewing a shared file
-                displaySharedFile(fileData);
-            } else {
-                // We're on the main page
-                setupEventListeners();
-                updateShareUrl();
+        // Simple PeerJS wrapper for WebRTC connections
+        class P2PManager {
+            constructor() {
+                this.peer = null;
+                this.connections = {};
+                this.files = {};
+                this.peerFiles = {};
+                this.myId = null;
+                this.connected = false;
+                
+                // Initialize PeerJS
+                this.initPeer();
             }
+            
+            initPeer() {
+                // Generate a random peer ID
+                const peerId = 'peer-' + Math.random().toString(36).substring(2, 10);
+                
+                // Create PeerJS instance (using PeerJS cloud server for demo)
+                this.peer = new Peer(peerId);
+                
+                this.peer.on('open', (id) => {
+                    this.myId = id;
+                    this.connected = true;
+                    document.getElementById('peerId').textContent = id;
+                    document.getElementById('statusDot').className = 'status-dot status-connected';
+                    document.getElementById('statusText').textContent = 'Connected to peers';
+                    this.showNotification('Connected to P2P network');
+                });
+                
+                this.peer.on('connection', (conn) => {
+                    this.setupConnection(conn);
+                });
+                
+                this.peer.on('error', (err) => {
+                    console.error('PeerJS error:', err);
+                    this.showNotification('Connection error: ' + err, true);
+                });
+                
+                this.peer.on('disconnected', () => {
+                    this.connected = false;
+                    document.getElementById('statusDot').className = 'status-dot status-disconnected';
+                    document.getElementById('statusText').textContent = 'Disconnected from peers';
+                    this.showNotification('Disconnected from P2P network', true);
+                    
+                    // Try to reconnect
+                    setTimeout(() => {
+                        this.initPeer();
+                    }, 5000);
+                });
+            }
+            
+            setupConnection(conn) {
+                this.connections[conn.peer] = conn;
+                
+                conn.on('data', (data) => {
+                    this.handleData(conn, data);
+                });
+                
+                conn.on('close', () => {
+                    delete this.connections[conn.peer];
+                    delete this.peerFiles[conn.peer];
+                    this.updateFileList();
+                });
+                
+                // Send our file list to the new connection
+                if (Object.keys(this.files).length > 0) {
+                    conn.send({
+                        type: 'file-list',
+                        files: this.files
+                    });
+                }
+            }
+            
+            connectToPeer(peerId) {
+                if (this.connections[peerId] || peerId === this.myId) return;
+                
+                const conn = this.peer.connect(peerId);
+                this.setupConnection(conn);
+            }
+            
+            handleData(conn, data) {
+                switch (data.type) {
+                    case 'file-list':
+                        this.peerFiles[conn.peer] = data.files;
+                        this.updateFileList();
+                        break;
+                        
+                    case 'file-request':
+                        this.sendFile(conn, data.fileId);
+                        break;
+                        
+                    case 'file-data':
+                        this.receiveFile(data);
+                        break;
+                }
+            }
+            
+            broadcastFileList() {
+                const fileListMsg = {
+                    type: 'file-list',
+                    files: this.files
+                };
+                
+                for (const peerId in this.connections) {
+                    this.connections[peerId].send(fileListMsg);
+                }
+            }
+            
+            addFile(file) {
+                const fileId = 'file-' + Math.random().toString(36).substring(2, 10);
+                this.files[fileId] = {
+                    id: fileId,
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    data: file,
+                    owner: this.myId
+                };
+                
+                this.broadcastFileList();
+                this.updateFileList();
+                this.showNotification('File uploaded successfully!');
+            }
+            
+            requestFile(peerId, fileId) {
+                if (this.connections[peerId]) {
+                    this.connections[peerId].send({
+                        type: 'file-request',
+                        fileId: fileId
+                    });
+                }
+            }
+            
+            sendFile(conn, fileId) {
+                const file = this.files[fileId];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Split file into chunks to handle large files
+                    const chunkSize = 16384; // 16KB chunks
+                    const totalChunks = Math.ceil(reader.result.length / chunkSize);
+                    
+                    for (let i = 0; i < totalChunks; i++) {
+                        const chunk = reader.result.slice(i * chunkSize, (i + 1) * chunkSize);
+                        
+                        conn.send({
+                            type: 'file-data',
+                            fileId: fileId,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            chunk: i,
+                            totalChunks: totalChunks,
+                            data: chunk
+                        });
+                    }
+                };
+                reader.readAsDataURL(file.data);
+            }
+            
+            receiveFile(data) {
+                if (!this.files[data.fileId]) {
+                    this.files[data.fileId] = {
+                        id: data.fileId,
+                        name: data.name,
+                        type: data.type,
+                        size: data.size,
+                        chunks: [],
+                        received: 0
+                    };
+                }
+                
+                const file = this.files[data.fileId];
+                file.chunks[data.chunk] = data.data;
+                file.received++;
+                
+                if (file.received === data.totalChunks) {
+                    // All chunks received, reconstruct the file
+                    const fileData = file.chunks.join('');
+                    
+                    // Convert data URL back to file
+                    const byteString = atob(fileData.split(',')[1]);
+                    const mimeString = fileData.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    
+                    const blob = new Blob([ab], { type: mimeString });
+                    file.data = new File([blob], file.name, { type: file.type });
+                    delete file.chunks;
+                    delete file.received;
+                    
+                    this.updateFileList();
+                    this.showNotification('File downloaded: ' + file.name);
+                }
+            }
+            
+            updateFileList() {
+                // Combine our files with files from all peers
+                const allFiles = { ...this.files };
+                
+                for (const peerId in this.peerFiles) {
+                    for (const fileId in this.peerFiles[peerId]) {
+                        // Only add files we don't already have
+                        if (!allFiles[fileId]) {
+                            allFiles[fileId] = {
+                                ...this.peerFiles[peerId][fileId],
+                                owner: peerId
+                            };
+                        }
+                    }
+                }
+                
+                displayFiles(allFiles);
+            }
+            
+            showNotification(message, isError = false) {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.className = 'notification' + (isError ? ' error' : '');
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+        }
+        
+        let p2pManager;
+        
+        function initApp() {
+            p2pManager = new P2PManager();
+            setupEventListeners();
         }
         
         function setupEventListeners() {
             const dropArea = document.getElementById('dropArea');
             const fileInput = document.getElementById('fileInput');
             const browseBtn = document.getElementById('browseBtn');
-            const copyBtn = document.getElementById('copyBtn');
             const closeModal = document.getElementById('closeModal');
             const modal = document.getElementById('modal');
             
@@ -488,8 +713,6 @@
                 handleFiles(fileInput.files);
             });
             
-            copyBtn.addEventListener('click', copyShareUrl);
-            
             closeModal.addEventListener('click', () => {
                 modal.style.display = 'none';
             });
@@ -505,19 +728,31 @@
             if (files.length === 0) return;
             
             const file = files[0];
-            displayFile(file);
-            updateShareUrl(file);
+            p2pManager.addFile(file);
         }
         
-        function displayFile(file) {
+        function displayFiles(files) {
             const fileList = document.getElementById('fileList');
             const emptyState = document.getElementById('emptyState');
+            
+            if (Object.keys(files).length === 0) {
+                emptyState.style.display = 'block';
+                fileList.innerHTML = '';
+                fileList.appendChild(emptyState);
+                return;
+            }
             
             emptyState.style.display = 'none';
             fileList.innerHTML = '';
             
-            const fileItem = createFileItem(file);
-            fileList.appendChild(fileItem);
+            // Convert files object to array and sort by name
+            const filesArray = Object.values(files);
+            filesArray.sort((a, b) => a.name.localeCompare(b.name));
+            
+            filesArray.forEach(file => {
+                const fileItem = createFileItem(file);
+                fileList.appendChild(fileItem);
+            });
         }
         
         function createFileItem(file) {
@@ -538,12 +773,22 @@
             fileName.className = 'file-name';
             fileName.textContent = file.name;
             
+            const fileMeta = document.createElement('div');
+            fileMeta.className = 'file-meta';
+            
             const fileSize = document.createElement('div');
             fileSize.className = 'file-size';
             fileSize.textContent = formatFileSize(file.size);
             
+            const fileOwner = document.createElement('div');
+            fileOwner.className = 'file-owner';
+            fileOwner.textContent = file.owner === p2pManager.myId ? 'You' : 'From peer';
+            
+            fileMeta.appendChild(fileSize);
+            fileMeta.appendChild(fileOwner);
+            
             fileDetails.appendChild(fileName);
-            fileDetails.appendChild(fileSize);
+            fileDetails.appendChild(fileMeta);
             
             fileInfo.appendChild(fileIcon);
             fileInfo.appendChild(fileDetails);
@@ -551,7 +796,7 @@
             const fileActions = document.createElement('div');
             fileActions.className = 'file-actions';
             
-            if (isViewable(file.type)) {
+            if (isViewable(file.type) && file.data) {
                 const viewBtn = document.createElement('button');
                 viewBtn.className = 'view-btn';
                 viewBtn.innerHTML = '<i class="fas fa-eye"></i> View';
@@ -572,7 +817,6 @@
         }
         
         function getFileIcon(type) {
-            // Simple icon mapping based on file type
             if (type.startsWith('image/')) return '<i class="fas fa-image"></i>';
             if (type.startsWith('video/')) return '<i class="fas fa-video"></i>';
             if (type.startsWith('audio/')) return '<i class="fas fa-music"></i>';
@@ -592,7 +836,6 @@
         }
         
         function isViewable(type) {
-            // Check if file type can be viewed in the browser
             return (
                 type.startsWith('image/') ||
                 type.startsWith('video/') ||
@@ -602,6 +845,13 @@
         }
         
         function viewFile(file) {
+            if (!file.data) {
+                // Request the file from the owner if we don't have it
+                p2pManager.requestFile(file.owner, file.id);
+                p2pManager.showNotification('Requesting file from peer...');
+                return;
+            }
+            
             const modal = document.getElementById('modal');
             const modalBody = document.getElementById('modalBody');
             
@@ -609,35 +859,44 @@
             
             if (file.type.startsWith('image/')) {
                 const img = document.createElement('img');
-                img.src = URL.createObjectURL(file);
+                img.src = URL.createObjectURL(file.data);
                 img.alt = file.name;
                 modalBody.appendChild(img);
             } else if (file.type.startsWith('video/')) {
                 const video = document.createElement('video');
-                video.src = URL.createObjectURL(file);
+                video.src = URL.createObjectURL(file.data);
                 video.controls = true;
                 video.autoplay = true;
                 modalBody.appendChild(video);
             } else if (file.type.startsWith('audio/')) {
                 const audio = document.createElement('audio');
-                audio.src = URL.createObjectURL(file);
+                audio.src = URL.createObjectURL(file.data);
                 audio.controls = true;
                 audio.autoplay = true;
                 modalBody.appendChild(audio);
             } else if (file.type === 'application/pdf') {
                 const object = document.createElement('object');
-                object.data = URL.createObjectURL(file);
+                object.data = URL.createObjectURL(file.data);
                 object.type = 'application/pdf';
                 object.width = '100%';
                 object.height = '500px';
                 modalBody.appendChild(object);
+            } else {
+                modalBody.innerHTML = '<p>This file type cannot be previewed.</p>';
             }
             
             modal.style.display = 'flex';
         }
         
         function downloadFile(file) {
-            const url = URL.createObjectURL(file);
+            if (!file.data) {
+                // Request the file from the owner if we don't have it
+                p2pManager.requestFile(file.owner, file.id);
+                p2pManager.showNotification('Requesting file from peer...');
+                return;
+            }
+            
+            const url = URL.createObjectURL(file.data);
             const a = document.createElement('a');
             a.href = url;
             a.download = file.name;
@@ -646,93 +905,9 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
-        
-        function updateShareUrl(file) {
-            const shareUrl = document.getElementById('shareUrl');
-            
-            if (file) {
-                // Read file as data URL
-                const reader = new FileReader();
-                reader.onload = function() {
-                    const dataUrl = reader.result;
-                    const currentUrl = window.location.href.split('?')[0];
-                    const shareableUrl = `${currentUrl}?file=${encodeURIComponent(dataUrl)}&name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type)}`;
-                    shareUrl.value = shareableUrl;
-                };
-                reader.readAsDataURL(file);
-            } else {
-                shareUrl.value = '';
-                shareUrl.placeholder = 'Upload a file to generate share URL';
-            }
-        }
-        
-        function copyShareUrl() {
-            const shareUrl = document.getElementById('shareUrl');
-            
-            if (shareUrl.value) {
-                shareUrl.select();
-                shareUrl.setSelectionRange(0, 99999);
-                document.execCommand('copy');
-                
-                showNotification('URL copied to clipboard!');
-            }
-        }
-        
-        function showNotification(message) {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.classList.add('show');
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-        
-        function displaySharedFile(fileData) {
-            // Extract file information from URL parameters
-            const urlParams = new URLSearchParams(window.location.search);
-            const fileName = decodeURIComponent(urlParams.get('name') || 'file');
-            const fileType = decodeURIComponent(urlParams.get('type') || '');
-            
-            // Convert data URL back to file
-            const file = dataUrlToFile(fileData, fileName, fileType);
-            
-            // Update UI for viewing the shared file
-            document.querySelector('header h1').innerHTML = '<i class="fas fa-download"></i> Download File';
-            document.querySelector('header .description').textContent = 'You can view or download this shared file';
-            
-            // Hide upload and share sections
-            document.querySelector('.upload-section').style.display = 'none';
-            document.querySelector('.share-section').style.display = 'none';
-            
-            // Display the file
-            displayFile(file);
-            
-            // Add a back button
-            const backButton = document.createElement('button');
-            backButton.className = 'browse-btn';
-            backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back to File Sharing';
-            backButton.style.marginTop = '20px';
-            backButton.addEventListener('click', () => {
-                window.location.href = window.location.href.split('?')[0];
-            });
-            
-            document.querySelector('.files-section').appendChild(backButton);
-        }
-        
-        function dataUrlToFile(dataUrl, fileName, fileType) {
-            const arr = dataUrl.split(',');
-            const mime = arr[0].match(/:(.*?);/)[1];
-            const bstr = atob(arr[1]);
-            let n = bstr.length;
-            const u8arr = new Uint8Array(n);
-            
-            while (n--) {
-                u8arr[n] = bstr.charCodeAt(n);
-            }
-            
-            return new File([u8arr], fileName, { type: fileType || mime });
-        }
     </script>
+    
+    <!-- Load PeerJS library from CDN -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </body>
 </html>
